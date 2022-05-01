@@ -1,0 +1,7 @@
+*.user
+.vs
+Debug
+Release
+x64
+SFML-2.5.1/examples
+SFML-2.5.1/doc
