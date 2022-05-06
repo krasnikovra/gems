@@ -6,19 +6,18 @@
 constexpr unsigned U = 7;
 constexpr unsigned V = 7;
 constexpr float MARGINX_RATIO = .1f;
-constexpr float MARGINBOT_RATIO = .05f;
-constexpr float MARGINTOP_RATIO = .05f;
+constexpr float MARGINY_RATIO = .05f;
 constexpr float PUSH_DOWN_TIMER_MAX = 0.5f;
 constexpr float SWAP_TIMER_MAX = 0.25f;
 
-Map::Map(Game& parent) : _game(&parent), _u(U), _v(V),
-    _gems(std::vector<std::unique_ptr<Gem>>(_u * _v)) {
-    _x0 = _game->getWindow()->getSize().x * MARGINX_RATIO;
-    _y0 = _game->getWindow()->getSize().y * MARGINTOP_RATIO;
-    const float marginx = _x0; // horizontal align: center
-    const float marginy = _game->getWindow()->getSize().y * MARGINBOT_RATIO; // vertical align: bottom
-    _cellWidth = (_game->getWindow()->getSize().x - 2 * marginx) / static_cast<float>(_u);
-    _cellHeight = (_game->getWindow()->getSize().y - _y0 - marginy) / static_cast<float>(_v);
+Map::Map(Game& parent) : _game(parent), _uvSize(sf::Vector2u(U, V)),
+    _gems(std::vector<std::unique_ptr<Gem>>(U * V)) {
+    _pos.x = _game.getWindow()->getSize().x * MARGINX_RATIO;
+    _pos.y = _game.getWindow()->getSize().y * MARGINY_RATIO;
+    const float marginx = _pos.x; // horizontal align: center
+    const float marginy = _pos.y; // vertical align: center
+    _cellSize.x = (_game.getWindow()->getSize().x - 2 * marginx) / static_cast<float>(_uvSize.x);
+    _cellSize.y = (_game.getWindow()->getSize().y - 2 * marginy) / static_cast<float>(_uvSize.y);
     try {
         do {
             _fillGaps();
@@ -35,52 +34,44 @@ void Map::draw() {
     _drawGems();
 }
 
-Game* Map::getGame() const {
+Game& Map::getGame() const {
     return _game;
 }
 
-float Map::getCellWidth() const {
-    return _cellWidth;
+sf::Vector2f Map::getCellSize() const {
+    return _cellSize;
 }
 
-float Map::getCellHeight() const {
-    return _cellHeight;
-}
-
-float Map::getX0() const {
-    return _x0;
-}
-
-float Map::getY0() const {
-    return _y0;
+sf::Vector2f Map::getPos() const {
+    return _pos;
 }
 
 sf::Vector2u Map::getUVSize() const {
-    return sf::Vector2u(_u, _v);
+    return _uvSize;
 }
 
 std::unique_ptr<Gem>& Map::getGem(const unsigned u, const unsigned v) {
-    return _gems[v * _u + u];
+    return _gems[v * _uvSize.x + u];
 }
 
 std::unique_ptr<Gem>& Map::getGem(const sf::Vector2u& uv) {
-    return _gems[uv.y * _u + uv.x];
+    return _gems[uv.y * _uvSize.y + uv.x];
 }
 
 bool Map::inMap(const sf::Vector2i& pos) const {
-    return (_xGrid(0) < pos.x && pos.x < _xGrid(_u)) &&
-        (_yGrid(0) < pos.y && pos.y < _yGrid(_v));
+    return (_Grid(0).x < pos.x && pos.x < _Grid(_uvSize.x).x) &&
+        (_Grid(0).y < pos.y && pos.y < _Grid(_uvSize.y).y);
 }
 
 void Map::handleEvent(const sf::Event& event) {
     if (_isPushDownTimerActive || _isSwapTimerActive)
         return;
-    sf::Vector2i pos = sf::Mouse::getPosition(*_game->getWindow());
+    const sf::Vector2i pos = sf::Mouse::getPosition(*_game.getWindow());
     switch (event.type) {
     case sf::Event::MouseButtonPressed:
         unsigned u, v;
-        for (u = 0; u < _u && pos.x > _xGrid(u + 1); u++);
-        for (v = 0; v < _v && pos.y > _yGrid(v + 1); v++);
+        for (u = 0; u < _uvSize.x && pos.x > _Grid(u + 1).x; u++);
+        for (v = 0; v < _uvSize.y && pos.y > _Grid(v + 1).y; v++);
         if (!getGem(u, v))
             return;
         if (getGem(u, v)->isSelected()) {
@@ -90,18 +81,18 @@ void Map::handleEvent(const sf::Event& event) {
         else {
             if (!_gemSelected) {
                 getGem(u, v)->select();
-                _gemSelected = &*getGem(u, v);
+                _gemSelected = getGem(u, v).get();
             }
             else {
                 // we have one already selected
                 // check if new one is neighbour of selected
                 _gemSelected->unselect();
-                sf::Vector2u clickedUV = sf::Vector2u(u, v);
-                sf::Vector2u selectedUV = sf::Vector2u(_gemSelected->getU(), _gemSelected->getV());
-                bool areNeighbours = abs(static_cast<int>(u) - static_cast<int>(_gemSelected->getU())) +
-                    abs(static_cast<int>(v) - static_cast<int>(_gemSelected->getV())) < 2;
+                const sf::Vector2u clickedUV = sf::Vector2u(u, v);
+                const sf::Vector2u selectedUV = _gemSelected->getUV();
+                const bool areNeighbours = abs(static_cast<int>(u) - static_cast<int>(selectedUV.x)) +
+                    abs(static_cast<int>(v) - static_cast<int>(selectedUV.y)) < 2;
                 if (areNeighbours) {
-                    _swapGems(selectedUV, sf::Vector2u(u, v));
+                    _swapGems(selectedUV, clickedUV);
                     _lastSwap = std::make_pair(selectedUV, clickedUV);
                     _startSwapTimer();
                 }
@@ -112,19 +103,19 @@ void Map::handleEvent(const sf::Event& event) {
 }
 
 void Map::_drawGrid() {
-    for (unsigned i = 0; i < _u + 1; i++) {
+    for (unsigned i = 0; i < _uvSize.x + 1; i++) {
         sf::Vertex line[] = {
-            sf::Vertex(sf::Vector2f(_xGrid(i), _yGrid(0)), sf::Color::Black),
-            sf::Vertex(sf::Vector2f(_xGrid(i), _yGrid(_v)), sf::Color::Black)
+            sf::Vertex(sf::Vector2f(_Grid(i).x, _Grid(0).y), sf::Color::Black),
+            sf::Vertex(sf::Vector2f(_Grid(i).x, _Grid(_uvSize.y).y), sf::Color::Black)
         };
-        _game->getWindow()->draw(line, 2, sf::Lines);
+        _game.getWindow()->draw(line, 2, sf::Lines);
     }
-    for (unsigned i = 0; i < _v + 1; i++) {
+    for (unsigned i = 0; i < _uvSize.y + 1; i++) {
         sf::Vertex line[] = {
-            sf::Vertex(sf::Vector2f(_xGrid(0), _yGrid(i)), sf::Color::Black),
-            sf::Vertex(sf::Vector2f(_xGrid(_u), _yGrid(i)), sf::Color::Black)
+            sf::Vertex(sf::Vector2f(_Grid(0).x, _Grid(i).y), sf::Color::Black),
+            sf::Vertex(sf::Vector2f(_Grid(_uvSize.x).x, _Grid(i).y), sf::Color::Black)
         };
-        _game->getWindow()->draw(line, 2, sf::Lines);
+        _game.getWindow()->draw(line, 2, sf::Lines);
     }
 }
 
@@ -145,23 +136,19 @@ void Map::_swapGems(const sf::Vector2u& uv1, const sf::Vector2u& uv2) {
     getGem(uv2) = std::move(temp);
 }
 
-float Map::_xGrid(const unsigned i) const {
-    return _x0 + i * _cellWidth;
-}
-
-float Map::_yGrid(const unsigned i) const {
-    return _y0 + i * _cellHeight;
+sf::Vector2f Map::_Grid(const unsigned i) const {
+    return _pos + static_cast<float>(i) * _cellSize;
 }
 
 bool Map::_destroyCombos(bool inGame) {
     bool res = false;
     std::vector<sf::Vector2u> combinedGemsPos;
-    for (unsigned i = 0; i < _u; i++)
-        for (unsigned j = 0; j < _v; j++) {
+    for (unsigned i = 0; i < _uvSize.x; i++)
+        for (unsigned j = 0; j < _uvSize.y; j++) {
             if (getGem(i, j)) {
-                bool isHorisontalCombo = 0 < i && i < _u - 1 && getGem(i - 1, j) && getGem(i + 1, j) ?
+                bool isHorisontalCombo = 0 < i && i < _uvSize.x - 1 && getGem(i - 1, j) && getGem(i + 1, j) ?
                     *getGem(i - 1, j) == *getGem(i, j) && *getGem(i, j) == *getGem(i + 1, j) : false;
-                bool isVerticalCombo = 0 < j && j < _v - 1 && getGem(i, j - 1) && getGem(i, j + 1) ?
+                bool isVerticalCombo = 0 < j && j < _uvSize.y - 1 && getGem(i, j - 1) && getGem(i, j + 1) ?
                     *getGem(i, j - 1) == *getGem(i, j) && *getGem(i, j) == *getGem(i, j + 1) : false;
                 if (isHorisontalCombo) {
                     res = true;
@@ -189,8 +176,8 @@ bool Map::_destroyCombos(bool inGame) {
 
 bool Map::_pushDown() {
     bool res = false;
-    for (unsigned i = 0; i < _u; i++) {
-        for (unsigned j = _v - 1; j > 0; j--)
+    for (unsigned i = 0; i < _uvSize.x; i++) {
+        for (unsigned j = _uvSize.y - 1; j > 0; j--)
             if (!getGem(i, j)) {
                 // if gem pushed down then pushDown should be true
                 if (getGem(i, j - 1))
@@ -203,8 +190,8 @@ bool Map::_pushDown() {
 
 bool Map::_fillGaps() {
     bool res = false;
-    for (unsigned i = 0; i < _u; i++)
-        for (unsigned j = 0; j < _v; j++)
+    for (unsigned i = 0; i < _uvSize.x; i++)
+        for (unsigned j = 0; j < _uvSize.y; j++)
             if (!getGem(i, j)) {
                 res = true;
                 getGem(i, j) = std::make_unique<Gem>(*this, Gem::RandomColor());

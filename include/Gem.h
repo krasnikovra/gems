@@ -1,7 +1,6 @@
 #pragma once
 
 #include <SFML/Graphics.hpp>
-#include <SFML/Graphics/Color.hpp>
 
 class Map;
 
@@ -25,10 +24,7 @@ public:
     void setPosition(const sf::Vector2f& pos);
     void setColor(const Color& color);
     void bindMapCell(const sf::Vector2u& cellUV);
-    float getWidth() const;
-    float getHeight() const;
-    unsigned getU() const;
-    unsigned getV() const;
+    sf::Vector2f getSize() const;
     sf::Vector2u getUV() const;
     sf::Vector2f getPosition() const;
     Color getColor() const;
@@ -37,7 +33,7 @@ public:
     void unselect();
     bool isSelected() const;
     bool operator==(const Gem& other) const;
-    virtual void onDeath();
+    virtual void onDeath(); // game action which can be done before dying
 protected:
     explicit Gem(Map& parent, const Color& color, const std::string& texturePath);
     float _calculateScale(const float margin) const;
@@ -45,14 +41,14 @@ protected:
     void _fixSize();
     void _fixSprite();
 
-    Map* _map;
+    Map& _map;
     sf::Sprite _sprite;
     sf::Texture _texture;
     Color _color;
-    float _width, _height;
+    sf::Vector2f _size;
     float _scaleDefault, _scaleSelected;
     float _scale;
-    unsigned _u, _v;
+    sf::Vector2u _uv;
 };
 
 class NoGemTextureException : public std::exception {

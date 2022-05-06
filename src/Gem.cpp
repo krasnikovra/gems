@@ -27,7 +27,7 @@ Gem::Color Gem::RandomColor() {
 
 Gem::Gem(Map& parent, const Color& color) : Gem(parent, color, GEM_TEXTURE_PATH) {}
 
-Gem::Gem(Map& parent, const Color& color, const std::string& texturePath) : _map(&parent), _color(color) {
+Gem::Gem(Map& parent, const Color& color, const std::string& texturePath) : _map(parent), _color(color) {
     sf::Image img;
     if (!img.loadFromFile(texturePath))
         throw NoGemTextureException(texturePath);
@@ -40,8 +40,7 @@ Gem::Gem(Map& parent, const Color& color, const std::string& texturePath) : _map
     _scaleSelected = _calculateScale(CELL_MARGIN_RATIO_SELECTED);
     _scale = _scaleDefault;
     _sprite.setScale(_scale, _scale);
-    _width = tex.getSize().x * _scale;
-    _height = tex.getSize().y * _scale;
+    _size = _scale * static_cast<sf::Vector2f>(tex.getSize());
 }
 
 void Gem::setPosition(const sf::Vector2f& pos) {
@@ -54,37 +53,24 @@ void Gem::setColor(const Color& color) {
 }
 
 void Gem::bindMapCell(const sf::Vector2u& cellUV) {
-    _u = cellUV.x;
-    _v = cellUV.y;
-    const float x0 = _map->getX0();
-    const float y0 = _map->getY0();
-    const float cellWidth = _map->getCellWidth();
-    const float cellHeight = _map->getCellHeight();
+    _uv = cellUV;
+    const float x0 = _map.getPos().x;
+    const float y0 = _map.getPos().y;
+    const float cellWidth = _map.getCellSize().x;
+    const float cellHeight = _map.getCellSize().y;
     sf::Vector2f pos = sf::Vector2f(
-        x0 + _u * cellWidth + cellWidth / 2.0f - _width / 2.0f,
-        y0 + _v * cellHeight + cellHeight / 2.0f - _height / 2.0f
+        x0 + _uv.x * cellWidth + cellWidth / 2.0f - _size.x / 2.0f,
+        y0 + _uv.y * cellHeight + cellHeight / 2.0f - _size.y / 2.0f
     );
     _sprite.setPosition(pos);
 }
 
-float Gem::getWidth() const {
-    return _width;
-}
-
-float Gem::getHeight() const {
-    return _height;
-}
-
-unsigned Gem::getU() const {
-    return _u;
-}
-
-unsigned Gem::getV() const {
-    return _v;
+sf::Vector2f Gem::getSize() const {
+    return _size;
 }
 
 sf::Vector2u Gem::getUV() const {
-    return sf::Vector2u(getU(), getV());
+    return _uv;
 }
 
 sf::Vector2f Gem::getPosition() const {
@@ -96,7 +82,7 @@ Gem::Color Gem::getColor() const {
 }
 
 void Gem::draw() {
-    _map->getGame()->getWindow()->draw(_sprite);
+    _map.getGame().getWindow()->draw(_sprite);
 }
 
 void Gem::select() {
@@ -119,24 +105,24 @@ void Gem::onDeath() {
     if (rand() / static_cast<float>(RAND_MAX) < BONUS_PROB) {
         auto min = [](int a, int b) -> int { return a < b ? a : b; };
         auto max = [](int a, int b) -> int { return a > b ? a : b; };
-        unsigned uMin = static_cast<unsigned>(max(static_cast<int>(_u) - static_cast<int>(BONUS_RADIUS), 0));
-        unsigned vMin = static_cast<unsigned>(max(static_cast<int>(_v) - static_cast<int>(BONUS_RADIUS), 0));
-        unsigned uMax = static_cast<unsigned>(min(static_cast<int>(_u) + static_cast<int>(BONUS_RADIUS), _map->getUVSize().x - 1));
-        unsigned vMax = static_cast<unsigned>(min(static_cast<int>(_v) + static_cast<int>(BONUS_RADIUS), _map->getUVSize().y - 1));
+        unsigned uMin = static_cast<unsigned>(max(static_cast<int>(_uv.x) - static_cast<int>(BONUS_RADIUS), 0));
+        unsigned vMin = static_cast<unsigned>(max(static_cast<int>(_uv.y) - static_cast<int>(BONUS_RADIUS), 0));
+        unsigned uMax = static_cast<unsigned>(min(static_cast<int>(_uv.x) + static_cast<int>(BONUS_RADIUS), _map.getUVSize().x - 1));
+        unsigned vMax = static_cast<unsigned>(min(static_cast<int>(_uv.y) + static_cast<int>(BONUS_RADIUS), _map.getUVSize().y - 1));
         while (true) {
             sf::Vector2u randPos = sf::Vector2u(rand() % (uMax - uMin + 1) + uMin, rand() % (vMax - vMin + 1) + vMin);
-            bool isSelf = randPos == sf::Vector2u(_u, _v);
+            bool isSelf = randPos == _uv;
             if (!isSelf) {
                 Color color;
-                if (_map->getGem(randPos))
-                    color = _map->getGem(randPos)->getColor();
+                if (_map.getGem(randPos))
+                    color = _map.getGem(randPos)->getColor();
                 else
                     color = RandomColor();
                 if (rand() % 2)
-                    _map->getGem(randPos) = std::make_unique<Bomb>(*_map, color);
+                    _map.getGem(randPos) = std::make_unique<Bomb>(_map, color);
                 else
-                    _map->getGem(randPos) = std::make_unique<Brush>(*_map, _color);
-                _map->getGem(randPos)->bindMapCell(randPos);
+                    _map.getGem(randPos) = std::make_unique<Brush>(_map, _color);
+                _map.getGem(randPos)->bindMapCell(randPos);
                 break;
             }
         }
@@ -144,9 +130,13 @@ void Gem::onDeath() {
 }
 
 float Gem::_calculateScale(const float margin) const {
-    return _map->getCellWidth() > _map->getCellHeight() ?
-        (_map->getCellHeight() - 2 * margin * _map->getCellHeight()) / static_cast<float>(_texture.getSize().y) :
-        (_map->getCellWidth() - 2 * margin * _map->getCellWidth()) / static_cast<float>(_texture.getSize().x);
+    const unsigned texWidth = _texture.getSize().x;
+    const unsigned texHeight = _texture.getSize().y;
+    const float cellWidth = _map.getCellSize().x;
+    const float cellHeight = _map.getCellSize().y;
+    return cellWidth > cellHeight ?
+        (cellHeight - 2 * margin * cellHeight) / static_cast<float>(texHeight) :
+        (cellWidth - 2 * margin * cellWidth) / static_cast<float>(texWidth);
 }
 
 void Gem::_setScale(const float scale) {
@@ -156,13 +146,12 @@ void Gem::_setScale(const float scale) {
 }
 
 void Gem::_fixSize() {
-    _width = _texture.getSize().x * _scale;
-    _height = _texture.getSize().y * _scale;
+    _size = _scale * static_cast<sf::Vector2f>(_texture.getSize());
 }
 
 void Gem::_fixSprite() {
     _sprite.setScale(_scale, _scale);
-    bindMapCell(sf::Vector2u(_u, _v));
+    bindMapCell(_uv);
 }
 
 NoGemTextureException::NoGemTextureException(const std::string& texturePath) {

@@ -7,17 +7,15 @@ class Game;
 
 class Map {
 public:
-    explicit Map() = default;
+    explicit Map() = delete;
     explicit Map(const Map& other) = delete;
     explicit Map(Map&& other) noexcept = delete;
     explicit Map(Game& parent);
     ~Map() = default;
     void draw();
-    Game* getGame() const;
-    float getCellWidth() const;
-    float getCellHeight() const;
-    float getX0() const;
-    float getY0() const;
+    Game& getGame() const;
+    sf::Vector2f getCellSize() const;
+    sf::Vector2f getPos() const;
     sf::Vector2u getUVSize() const;
     std::unique_ptr<Gem>& getGem(const unsigned u, const unsigned v);
     std::unique_ptr<Gem>& getGem(const sf::Vector2u& uv);
@@ -27,8 +25,7 @@ private:
     void _drawGrid();
     void _drawGems();
     void _swapGems(const sf::Vector2u& uv1, const sf::Vector2u& uv2);
-    float _xGrid(const unsigned i) const;
-    float _yGrid(const unsigned i) const;
+    sf::Vector2f _Grid(const unsigned i) const;
     bool _destroyCombos(bool inGame);
     bool _pushDown();
     bool _fillGaps();
@@ -38,10 +35,10 @@ private:
     void _stopSwapTimer();
     void _update();
 
-    float _x0, _y0;
-    float _cellWidth, _cellHeight;
-    unsigned _u, _v;
-    Game* _game;
+    sf::Vector2f _pos;
+    sf::Vector2f _cellSize;
+    sf::Vector2u _uvSize;
+    Game& _game;
     Gem* _gemSelected;
     std::vector<std::unique_ptr<Gem>> _gems;
     float _pushDownTimer;
