@@ -113,11 +113,7 @@ void Gem::onDeath() {
             sf::Vector2u randPos = sf::Vector2u(rand() % (uMax - uMin + 1) + uMin, rand() % (vMax - vMin + 1) + vMin);
             bool isSelf = randPos == _uv;
             if (!isSelf) {
-                Color color;
-                if (_map.getGem(randPos))
-                    color = _map.getGem(randPos)->getColor();
-                else
-                    color = RandomColor();
+                Color color = _map.getGem(randPos) ? _map.getGem(randPos)->getColor() : RandomColor();
                 if (rand() % 2)
                     _map.getGem(randPos) = std::make_unique<Bomb>(_map, color);
                 else
